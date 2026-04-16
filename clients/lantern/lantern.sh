@@ -2,10 +2,26 @@
 
 set -euo pipefail
 
-LANTERN_BIN="${LANTERN_BIN:-$(command -v lantern || command -v lantern_cli)}"
 NODE_ID="${HIVE_NODE_ID:-lantern_0}"
 ASSET_ROOT="/tmp/lantern-runtime"
 DEVNET_LABEL="${HIVE_LEAN_DEVNET_LABEL:-devnet3}"
+NETWORK_LABEL="${HIVE_NETWORK:-$DEVNET_LABEL}"
+
+case "$NETWORK_LABEL" in
+    devnet3)
+        DEFAULT_LANTERN_ROOT="/opt/lantern-devnet3"
+        ;;
+    devnet4)
+        DEFAULT_LANTERN_ROOT="/opt/lantern-devnet4"
+        ;;
+    *)
+        echo "Unsupported Lean devnet label: $NETWORK_LABEL" >&2
+        exit 1
+        ;;
+esac
+
+LANTERN_ROOT="${LANTERN_ROOT:-$DEFAULT_LANTERN_ROOT}"
+LANTERN_BIN="${LANTERN_BIN:-$LANTERN_ROOT/bin/lantern}"
 
 cleanup() {
     if [ -d "$ASSET_ROOT" ]; then
@@ -35,20 +51,21 @@ FLAGS=(
     --log-level debug
 )
 
+if [ "$NETWORK_LABEL" = "devnet4" ] && [ -f "$ASSET_ROOT/annotated_validators.yaml" ]; then
+    FLAGS+=(--validator-keys-path "$ASSET_ROOT/annotated_validators.yaml")
+fi
+
 if [ -n "${HIVE_CHECKPOINT_SYNC_URL:-}" ]; then
     FLAGS+=(--checkpoint-sync-url "$HIVE_CHECKPOINT_SYNC_URL")
 fi
 
-if [ -n "${HIVE_NETWORK:-}" ]; then
-    FLAGS+=(--devnet "$HIVE_NETWORK")
-else
-    FLAGS+=(--devnet "$DEVNET_LABEL")
-fi
+FLAGS+=(--devnet "$NETWORK_LABEL")
 
 if [ "${HIVE_IS_AGGREGATOR:-0}" = "1" ]; then
     FLAGS+=(--is-aggregator)
 fi
 
+export LD_LIBRARY_PATH="$LANTERN_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export RUST_LOG="${RUST_LOG:-info}"
 
 exec "$LANTERN_BIN" "${FLAGS[@]}"

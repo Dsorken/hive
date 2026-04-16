@@ -346,8 +346,11 @@ def write_lantern_assignments(
         lines.append(f'{spec["name"]}:')
         for index in spec["indices"]:
             validator = validators[index]
-            attestation_file = f"validator_{index}_att_sk.ssz"
-            proposal_file = f"validator_{index}_prop_sk.ssz"
+            # Lantern classifies dual-key manifests from the secret filenames.
+            # Match the upstream attester/proposer naming exactly so the
+            # annotated_validators.yaml parser accepts Hive-generated assets.
+            attestation_file = f"validator_{index}_attester_key_sk.ssz"
+            proposal_file = f"validator_{index}_proposer_key_sk.ssz"
             write_bytes(
                 asset_root / "hash-sig-keys" / attestation_file,
                 bytes.fromhex(validator["attestation_secret"]),
@@ -359,11 +362,11 @@ def write_lantern_assignments(
             lines.extend(
                 [
                     f"  - index: {index}",
-                    f'    pubkey_hex: "{validator["attestation_public"]}"',
-                    f'    privkey_file: "{attestation_file}"',
+                    f"    pubkey_hex: {validator['attestation_public']}",
+                    f"    privkey_file: {attestation_file}",
                     f"  - index: {index}",
-                    f'    pubkey_hex: "{validator["proposal_public"]}"',
-                    f'    privkey_file: "{proposal_file}"',
+                    f"    pubkey_hex: {validator['proposal_public']}",
+                    f"    privkey_file: {proposal_file}",
                 ]
             )
     write_text(asset_root / "annotated_validators.yaml", "\n".join(lines) + "\n")
