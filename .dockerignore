@@ -8,6 +8,14 @@ hiveview
 workspace
 target
 **/target
+.venv
+**/.venv
+venv
+**/venv
+.direnv
+**/.direnv
+.env
+.env.*
 **/__pycache__
 **/.pytest_cache
 **/.mypy_cache
