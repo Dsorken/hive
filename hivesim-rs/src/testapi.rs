@@ -583,13 +583,25 @@ async fn run_shared_client_test<T: Clone + Send + Sync + 'static>(
 }
 
 pub async fn run_suite(host: Simulation, suites: Vec<Suite>) {
-    for suite in suites {
-        if let Some(test_match) = host.test_matcher.clone() {
-            if !test_match.match_test(&suite.name, "") {
-                continue;
+    let suites = suites
+        .into_iter()
+        .filter(|suite| {
+            if let Some(test_match) = host.test_matcher.clone() {
+                return test_match.match_test(&suite.name, "");
             }
-        }
+            true
+        })
+        .collect::<Vec<_>>();
+    let suite_plan = suites
+        .iter()
+        .map(|suite| suite.name.as_str())
+        .collect::<Vec<_>>();
+    println!(
+        "HIVE_SUITE_PLAN {}",
+        serde_json::json!({ "suites": suite_plan })
+    );
 
+    for suite in suites {
         let name = suite.clone().name;
         let description = suite.clone().description;
 
