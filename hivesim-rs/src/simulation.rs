@@ -154,6 +154,13 @@ impl Simulation {
             .expect("Failed to send end test request");
     }
 
+    pub fn test_progress(&self, suite: &str) {
+        println!(
+            "HIVE_SUITE_PROGRESS {}",
+            serde_json::json!({ "suite": suite })
+        );
+    }
+
     /// Starts a new node (or other container).
     /// Returns container id and ip.
     pub async fn start_client(

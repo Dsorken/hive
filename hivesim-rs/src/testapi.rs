@@ -1,5 +1,5 @@
 use crate::types::{ClientDefinition, SuiteID, TestID, TestResult};
-use crate::Simulation;
+use crate::{Simulation, TestMatcher};
 use ::std::{boxed::Box, future::Future, pin::Pin};
 use async_trait::async_trait;
 use core::fmt::Debug;
@@ -7,6 +7,7 @@ use dyn_clone::DynClone;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::time::Duration;
 
 use crate::utils::extract_test_results;
 
@@ -51,6 +52,11 @@ type ClientEnvironments = Option<Vec<Option<HashMap<String, String>>>>;
 #[async_trait]
 pub trait Testable: DynClone + Send + Sync {
     async fn run_test(&self, simulation: Simulation, suite_id: SuiteID, suite: Suite);
+
+    fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        let _ = (suite, test_matcher);
+        1
+    }
 }
 
 impl Debug for dyn Testable {
@@ -91,6 +97,7 @@ pub struct TestRun {
     pub name: String,
     pub desc: String,
     pub always_run: bool,
+    pub count_progress: bool,
 }
 
 /// A running test
@@ -214,9 +221,53 @@ impl Testable for TestSpec {
             name: self.name.to_owned(),
             desc: self.description.to_owned(),
             always_run: self.always_run,
+            count_progress: true,
         };
 
         run_test(simulation, test_run, self.client.clone(), self.run).await;
+    }
+
+    fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher)
+    }
+}
+
+#[derive(Clone)]
+pub struct PlannedTestSpec {
+    pub name: String,
+    pub description: String,
+    pub always_run: bool,
+    pub run: AsyncTestFunc,
+    pub client: Option<Client>,
+    pub planned_test_count: usize,
+}
+
+#[async_trait]
+impl Testable for PlannedTestSpec {
+    async fn run_test(&self, simulation: Simulation, suite_id: SuiteID, suite: Suite) {
+        if let Some(test_match) = simulation.test_matcher.clone() {
+            if !self.always_run && !test_match.match_test(&suite.name, &self.name) {
+                return;
+            }
+        }
+
+        let test_run = TestRun {
+            suite_id,
+            suite,
+            name: self.name.to_owned(),
+            desc: self.description.to_owned(),
+            always_run: self.always_run,
+            count_progress: false,
+        };
+
+        run_test(simulation, test_run, self.client.clone(), self.run).await;
+    }
+
+    fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        if planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher) == 0 {
+            return 0;
+        }
+        self.planned_test_count
     }
 }
 
@@ -227,6 +278,8 @@ pub async fn run_test(
     func: AsyncTestFunc,
 ) {
     // Register test on simulation server and initialize the T.
+    let suite_name = test.suite.name.clone();
+    let count_progress = test.count_progress;
     let test_id = host.start_test(test.suite_id, test.name, test.desc).await;
     let suite_id = test.suite_id;
 
@@ -252,6 +305,9 @@ pub async fn run_test(
     );
 
     host.end_test(suite_id, test_id, test_result).await;
+    if count_progress {
+        host.test_progress(&suite_name);
+    }
 }
 
 #[derive(Clone)]
@@ -292,6 +348,7 @@ impl<T: Clone + Send + Sync + 'static> Testable for NClientTestSpec<T> {
             name: self.name.to_owned(),
             desc: self.description.to_owned(),
             always_run: self.always_run,
+            count_progress: true,
         };
 
         run_n_client_test(
@@ -304,6 +361,10 @@ impl<T: Clone + Send + Sync + 'static> Testable for NClientTestSpec<T> {
             self.run,
         )
         .await;
+    }
+
+    fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher)
     }
 }
 
@@ -318,6 +379,7 @@ async fn run_n_client_test<T: Send + 'static>(
     func: AsyncNClientsTestFunc<T>,
 ) {
     // Register test on simulation server and initialize the T.
+    let suite_name = test.suite.name.clone();
     let test_id = host.start_test(test.suite_id, test.name, test.desc).await;
     let suite_id = test.suite_id;
 
@@ -350,6 +412,7 @@ async fn run_n_client_test<T: Send + 'static>(
     );
 
     host.end_test(suite_id, test_id, test_result).await;
+    host.test_progress(&suite_name);
 }
 
 /// One scenario in a [`SharedClientTestSpec`].
@@ -408,6 +471,20 @@ impl<T: Clone + Send + Sync + 'static> Testable for SharedClientTestSpec<T> {
             self.scenarios.clone(),
         )
         .await;
+    }
+
+    fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        self.scenarios
+            .iter()
+            .map(|scenario| {
+                planned_test_count_for_name(
+                    suite,
+                    &scenario.name,
+                    scenario.always_run,
+                    test_matcher,
+                )
+            })
+            .sum()
     }
 }
 
@@ -526,6 +603,7 @@ async fn run_shared_client_test<T: Clone + Send + Sync + 'static>(
                 },
             )
             .await;
+            host.test_progress(&suite.name);
             scenarios_run += 1;
             continue;
         }
@@ -562,6 +640,7 @@ async fn run_shared_client_test<T: Clone + Send + Sync + 'static>(
             scenarios_passed += 1;
         }
         host.end_test(suite_id, scenario_test_id, test_result).await;
+        host.test_progress(&suite.name);
         scenarios_run += 1;
     }
 
@@ -594,12 +673,25 @@ pub async fn run_suite(host: Simulation, suites: Vec<Suite>) {
         .collect::<Vec<_>>();
     let suite_plan = suites
         .iter()
-        .map(|suite| suite.name.as_str())
+        .map(|suite| {
+            let tests = suite
+                .tests
+                .iter()
+                .map(|test| test.planned_test_count(&suite.name, host.test_matcher.as_ref()))
+                .sum::<usize>();
+            serde_json::json!({ "name": suite.name.as_str(), "tests": tests })
+        })
         .collect::<Vec<_>>();
     println!(
         "HIVE_SUITE_PLAN {}",
         serde_json::json!({ "suites": suite_plan })
     );
+    let heartbeat = tokio::spawn(async {
+        loop {
+            println!("HIVE_RUN_HEARTBEAT {}", serde_json::json!({}));
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
 
     for suite in suites {
         let name = suite.clone().name;
@@ -613,4 +705,20 @@ pub async fn run_suite(host: Simulation, suites: Vec<Suite>) {
 
         host.end_suite(suite_id).await;
     }
+    heartbeat.abort();
+    println!("HIVE_RUN_COMPLETE {}", serde_json::json!({}));
+}
+
+fn planned_test_count_for_name(
+    suite: &str,
+    test: &str,
+    always_run: bool,
+    test_matcher: Option<&TestMatcher>,
+) -> usize {
+    if let Some(test_matcher) = test_matcher {
+        if !always_run && !test_matcher.match_test(suite, test) {
+            return 0;
+        }
+    }
+    1
 }

@@ -615,6 +615,7 @@ pub(crate) async fn run_data_test<T: Send + 'static>(
     );
 
     host_test.sim.end_test(suite_id, test_id, test_result).await;
+    host_test.sim.test_progress(&host_test.suite.name);
 }
 
 pub(crate) async fn run_data_test_with_timeout<T: Send + 'static>(
@@ -677,6 +678,7 @@ pub(crate) async fn run_data_test_with_timeout<T: Send + 'static>(
     };
 
     host_test.sim.end_test(suite_id, test_id, test_result).await;
+    host_test.sim.test_progress(&host_test.suite.name);
 }
 
 pub(crate) fn default_genesis_time() -> u64 {

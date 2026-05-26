@@ -123,6 +123,23 @@ dyn_async! {
     }
 }
 
+pub fn spec_assets_fork_choice_test_count(client_count: usize) -> usize {
+    spec_assets_test_count(SpecFixtureKind::ForkChoice, client_count)
+}
+
+pub fn spec_assets_state_transition_test_count(client_count: usize) -> usize {
+    spec_assets_test_count(SpecFixtureKind::StateTransition, client_count)
+}
+
+pub fn spec_assets_verify_signatures_test_count(client_count: usize) -> usize {
+    spec_assets_test_count(SpecFixtureKind::VerifySignatures, client_count)
+}
+
+fn spec_assets_test_count(kind: SpecFixtureKind, client_count: usize) -> usize {
+    client_count
+        * filter_fixture_cases(discover_fixture_cases(Path::new(SPEC_TEST_ROOT), kind)).len()
+}
+
 async fn run_spec_assets_lean_test_suite_for_kind(test: &mut Test, kind: SpecFixtureKind) {
     let clients = lean_clients(test.sim.client_types().await);
     if clients.is_empty() {
