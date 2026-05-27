@@ -235,22 +235,16 @@ impl Testable for TestSpec {
 
 #[derive(Clone)]
 pub enum PlannedTestCount {
-    Fixed(usize),
     TestNames(Vec<String>),
 }
 
 impl PlannedTestCount {
-    pub fn fixed(count: usize) -> Self {
-        Self::Fixed(count)
-    }
-
     pub fn test_names(names: Vec<String>) -> Self {
         Self::TestNames(names)
     }
 
     fn count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
         match self {
-            Self::Fixed(count) => *count,
             Self::TestNames(names) => names
                 .iter()
                 .map(|name| planned_test_count_for_name(suite, name, false, test_matcher))
@@ -291,16 +285,6 @@ impl Testable for PlannedTestSpec {
     }
 
     fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
-        match &self.planned_test_count {
-            PlannedTestCount::Fixed(_) => {
-                if planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher)
-                    == 0
-                {
-                    return 0;
-                }
-            }
-            PlannedTestCount::TestNames(_) => {}
-        }
         self.planned_test_count.count(suite, test_matcher)
     }
 }
@@ -831,25 +815,5 @@ mod tests {
 
         let matcher = TestMatcher::new("rpc-compat/case");
         assert_eq!(spec.planned_test_count("sync", Some(&matcher)), 0);
-    }
-
-    #[test]
-    fn fixed_planned_count_still_respects_wrapper_matcher() {
-        let spec = PlannedTestSpec {
-            name: "wrapper".to_string(),
-            description: "wrapper".to_string(),
-            always_run: false,
-            run: noop,
-            client: None,
-            planned_test_count: PlannedTestCount::fixed(31),
-        };
-
-        assert_eq!(spec.planned_test_count("rpc-compat", None), 31);
-
-        let matcher = TestMatcher::new("rpc-compat/wrapper");
-        assert_eq!(spec.planned_test_count("rpc-compat", Some(&matcher)), 31);
-
-        let matcher = TestMatcher::new("rpc-compat/other");
-        assert_eq!(spec.planned_test_count("rpc-compat", Some(&matcher)), 0);
     }
 }
