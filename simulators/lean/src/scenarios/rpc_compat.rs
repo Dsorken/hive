@@ -1628,6 +1628,7 @@ const RPC_COMPAT_TEST_NAMES: &[&str] = &[
     "rpc_compat: forkchoice filters nodes before finalized slot",
     "rpc_compat: forkchoice keeps nodes at or beyond finalized slot",
     "rpc_compat: forkchoice returns empty nodes when all blocks are pre-finalized",
+    "rpc_compat: finalized-state shared-client scenarios",
     "rpc_compat: state returns ssz encoded finalized state",
     "rpc_compat: state returns octet-stream content type",
     "rpc_compat: state ssz decodes config",

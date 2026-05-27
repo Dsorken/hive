@@ -492,7 +492,8 @@ impl<T: Clone + Send + Sync + 'static> Testable for SharedClientTestSpec<T> {
     }
 
     fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
-        self.scenarios
+        let scenario_count: usize = self
+            .scenarios
             .iter()
             .map(|scenario| {
                 planned_test_count_for_name(
@@ -502,7 +503,19 @@ impl<T: Clone + Send + Sync + 'static> Testable for SharedClientTestSpec<T> {
                     test_matcher,
                 )
             })
-            .sum()
+            .sum();
+        let owner_count = match test_matcher {
+            Some(test_matcher) => {
+                let owner_matches = self.always_run || test_matcher.match_test(suite, &self.name);
+                if owner_matches || scenario_count > 0 {
+                    1
+                } else {
+                    0
+                }
+            }
+            None => 1,
+        };
+        owner_count + scenario_count
     }
 }
 
@@ -676,6 +689,7 @@ async fn run_shared_client_test<T: Clone + Send + Sync + 'static>(
         },
     )
     .await;
+    host.test_progress(&suite.name);
     guard.disarm();
 }
 
@@ -793,6 +807,18 @@ mod tests {
         Box::pin(async {})
     }
 
+    fn shared_noop(_: Client, _: ()) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> {
+        Box::pin(async {})
+    }
+
+    fn client_definition() -> ClientDefinition {
+        ClientDefinition {
+            name: "client".to_string(),
+            version: "test".to_string(),
+            meta: crate::types::ClientMetadata { roles: vec![] },
+        }
+    }
+
     #[test]
     fn planned_count_from_test_names_respects_test_matcher() {
         let spec = PlannedTestSpec {
@@ -815,5 +841,43 @@ mod tests {
 
         let matcher = TestMatcher::new("rpc-compat/case");
         assert_eq!(spec.planned_test_count("sync", Some(&matcher)), 0);
+    }
+
+    #[test]
+    fn shared_client_planned_count_includes_owner_when_it_runs() {
+        let spec = SharedClientTestSpec {
+            name: "owner".to_string(),
+            description: "owner".to_string(),
+            always_run: false,
+            environment: None,
+            files: None,
+            test_data: (),
+            client: client_definition(),
+            scenarios: vec![
+                SharedClientScenario {
+                    name: "scenario one".to_string(),
+                    description: "one".to_string(),
+                    always_run: false,
+                    run: shared_noop,
+                },
+                SharedClientScenario {
+                    name: "scenario two".to_string(),
+                    description: "two".to_string(),
+                    always_run: false,
+                    run: shared_noop,
+                },
+            ],
+        };
+
+        assert_eq!(spec.planned_test_count("rpc", None), 3);
+
+        let matcher = TestMatcher::new("rpc/scenario one");
+        assert_eq!(spec.planned_test_count("rpc", Some(&matcher)), 2);
+
+        let matcher = TestMatcher::new("rpc/owner");
+        assert_eq!(spec.planned_test_count("rpc", Some(&matcher)), 1);
+
+        let matcher = TestMatcher::new("rpc/absent");
+        assert_eq!(spec.planned_test_count("rpc", Some(&matcher)), 0);
     }
 }
