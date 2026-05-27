@@ -4,16 +4,27 @@ use crate::utils::libp2p_mock::{
 };
 use crate::utils::util::{
     expect_single_client, lean_clients, lean_environment, lean_single_client_runtime_setup,
-    load_fork_choice_response, prepare_client_runtime_files, selected_lean_devnet,
-    simulator_container_ip, LeanDevnet,
+    load_fork_choice_response, planned_tests_for_clients, prepare_client_runtime_files,
+    selected_lean_devnet, simulator_container_ip, LeanDevnet,
 };
 use alloy_primitives::B256;
+use hivesim::types::ClientDefinition;
 use hivesim::{dyn_async, Client, Test};
 use ssz::Encode;
 use std::time::Duration;
 use tokio::time::sleep;
 
 const REQRESP_LIBP2P_TIMEOUT_SECS: u64 = 30;
+
+const VALIDATION_TEST_NAMES: &[&str] = &[
+    "validation: rejects block with invalid proposer",
+    "validation: rejects block with invalid parent root",
+    "validation: rejects block with invalid state root",
+];
+
+pub(crate) fn validation_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    planned_tests_for_clients(clients, VALIDATION_TEST_NAMES)
+}
 
 // Suite: validation
 // Tests that clients properly validate blocks,

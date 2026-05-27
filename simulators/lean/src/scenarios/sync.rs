@@ -5,9 +5,11 @@ use crate::utils::helper::{
 };
 use crate::utils::util::{
     default_genesis_time, fork_choice_head_slot, lean_clients, load_fork_choice_response,
-    run_data_test, selected_lean_devnet, ClientUnderTestRole, ForkChoiceResponse, LeanDevnet,
+    planned_tests_for_clients, run_data_test, selected_lean_devnet, ClientUnderTestRole,
+    ForkChoiceResponse, LeanDevnet,
 };
 use alloy_primitives::B256;
+use hivesim::types::ClientDefinition;
 use hivesim::{dyn_async, Client, Test};
 use std::time::Duration;
 use tokio::time::{sleep, timeout, Instant};
@@ -19,6 +21,16 @@ const HEAD_BEHIND_FINALIZED_STARTUP_TIMEOUT_SECS: u64 = 600;
 const HEAD_BEHIND_FINALIZED_HELPER_PROGRESS_TIMEOUT_SECS: u64 = 420;
 const SYNC_HELPER_PEER_COUNT: usize = 2;
 const HEAD_SYNC_MAX_SLOT_LAG: u64 = 2;
+
+const SYNC_TEST_NAMES: &[&str] = &[
+    "sync: checkpoint sync fresh start",
+    "sync: head behind finalized recovery",
+    "sync: head recovery",
+];
+
+pub(crate) fn sync_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    planned_tests_for_clients(clients, SYNC_TEST_NAMES)
+}
 
 struct HeadSyncObservation {
     source_before_head: B256,

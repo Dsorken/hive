@@ -11,10 +11,12 @@ use crate::utils::libp2p_mock::{
 use crate::utils::util::{
     default_genesis_time, fork_choice_head_slot, http_client, lean_api_url, lean_clients,
     lean_environment, lean_single_client_runtime_setup, load_fork_choice_response,
-    prepare_client_runtime_files, run_data_test_with_timeout, selected_lean_devnet,
-    simulator_container_ip, ClientUnderTestRole, LeanDevnet, TimedDataTestSpec,
+    planned_tests_for_clients, prepare_client_runtime_files, run_data_test_with_timeout,
+    selected_lean_devnet, simulator_container_ip, ClientUnderTestRole, LeanDevnet,
+    TimedDataTestSpec,
 };
 use alloy_primitives::B256;
+use hivesim::types::ClientDefinition;
 use hivesim::{dyn_async, Client, Test};
 use ssz::{Decode, Encode};
 use std::time::Duration;
@@ -24,6 +26,34 @@ const POST_GENESIS_TEST_TIMEOUT: Duration = Duration::from_secs(8 * 60);
 const REQRESP_SYNC_TIMEOUT_SECS: u64 = 180;
 const STATUS_EXCHANGE_TIMEOUT_SECS: u64 = 60;
 const REQRESP_LIBP2P_TIMEOUT_SECS: u64 = 30;
+
+const REQRESP_TEST_NAMES: &[&str] = &[
+    "reqresp/status/happy_path",
+    "reqresp/status/genesis_only",
+    "reqresp/status/advanced_head",
+    "reqresp/status/incompatible_finalized_root",
+    "reqresp/status/incompatible_fork_or_network",
+    "reqresp/status/malformed_ssz",
+    "reqresp/blocks_by_root/single_known_block",
+    "reqresp/blocks_by_root/multiple_known_blocks",
+    "reqresp/blocks_by_root/unknown_root",
+    "reqresp/blocks_by_root/mixed_known_unknown",
+    "reqresp/blocks_by_root/max_request_limit",
+    "reqresp/blocks_by_root/too_many_roots",
+    "reqresp/blocks_by_root/duplicate_roots",
+    "reqresp/blocks_by_root/malformed_request",
+    "reqresp/blocks_by_range/single_known_block",
+    "reqresp/blocks_by_range/multiple_known_blocks",
+    "reqresp/blocks_by_range/zero_count",
+    "reqresp/blocks_by_range/too_many_blocks",
+    "reqresp/sync/missing_parent_backfill",
+    "reqresp/sync/catch_up_from_status",
+    "reqresp/concurrency/per_peer_request_limit",
+];
+
+pub(crate) fn reqresp_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    planned_tests_for_clients(clients, REQRESP_TEST_NAMES)
+}
 
 /// Dial a lean client from a MockNode using its deterministic PeerId and multiaddr.
 async fn dial_client(mock: &mut MockNode, client: &Client) -> Result<(), String> {

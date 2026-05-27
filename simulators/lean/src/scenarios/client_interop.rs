@@ -96,6 +96,42 @@ struct FinalizationObservation {
     error: Option<String>,
 }
 
+pub(crate) fn client_interop_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    let mut tests = Vec::new();
+    if clients.is_empty() {
+        return tests;
+    }
+
+    for aggregator_placement in single_subnet_aggregator_placements() {
+        for topology_spec in interop_topology_matrix(clients) {
+            let mut nodes = build_interop_nodes(topology_spec.topology);
+            assign_single_subnet_aggregator(&mut nodes, aggregator_placement);
+            let topology_label = topology_label(&nodes);
+            let run_label = format!(
+                "{} {} and {} / {}",
+                aggregator_placement.label(),
+                topology_spec.left_name,
+                topology_spec.right_name,
+                topology_label
+            );
+            tests.push(format!("client-interop: {run_label}"));
+        }
+    }
+
+    for topology_spec in two_subnet_interop_topology_matrix(clients) {
+        let mut nodes = build_two_subnet_interop_nodes(&topology_spec);
+        assign_two_subnet_aggregators(&mut nodes);
+        let topology_label = topology_label(&nodes);
+        let run_label = format!(
+            "two-subnet {} minority and {} majority / {}",
+            topology_spec.left_name, topology_spec.right_name, topology_label
+        );
+        tests.push(format!("client-interop: {run_label}"));
+    }
+
+    tests
+}
+
 dyn_async! {
     pub async fn run_client_interop_lean_test_suite<'a>(test: &'a mut Test, _client: Option<Client>) {
         let clients = lean_clients(test.sim.client_types().await);

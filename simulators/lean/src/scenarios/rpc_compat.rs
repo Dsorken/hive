@@ -6,11 +6,13 @@ use crate::utils::libp2p_mock::LeanSignature;
 use crate::utils::util::{
     default_genesis_time, expect_single_client, get_json_with_retry, http_client, lean_api_url,
     lean_clients, lean_environment, lean_single_client_runtime_setup, load_fork_choice_response,
-    load_response_with_retry, prepare_client_runtime_files, run_data_test_with_timeout,
-    selected_lean_devnet, CheckpointResponse, ClientUnderTestRole, ForkChoiceResponse,
-    HealthResponse, LeanDevnet, TimedDataTestSpec, HEALTHY_STATUS, LEAN_RPC_SERVICE,
+    load_response_with_retry, planned_tests_for_clients, prepare_client_runtime_files,
+    run_data_test_with_timeout, selected_lean_devnet, CheckpointResponse, ClientUnderTestRole,
+    ForkChoiceResponse, HealthResponse, LeanDevnet, TimedDataTestSpec, HEALTHY_STATUS,
+    LEAN_RPC_SERVICE,
 };
 use alloy_primitives::{FixedBytes, B256};
+use hivesim::types::ClientDefinition;
 use hivesim::{
     dyn_async, Client, NClientTestSpec, SharedClientScenario, SharedClientTestSpec, Test,
 };
@@ -1606,4 +1608,43 @@ dyn_async! {
             "finalized state slot should stay at or ahead of its latest finalized checkpoint"
         );
     }
+}
+
+const RPC_COMPAT_TEST_NAMES: &[&str] = &[
+    "health healthy",
+    "rpc_compat: checkpoints justified root encoding",
+    "rpc_compat: checkpoints justified fields",
+    "rpc_compat: checkpoints justified genesis",
+    "rpc_compat: checkpoints justified post-genesis",
+    "rpc_compat: forkchoice no head",
+    "rpc_compat: forkchoice no justified",
+    "rpc_compat: forkchoice no finalized",
+    "rpc_compat: forkchoice no nodes",
+    "rpc_compat: forkchoice defaults missing weight to zero",
+    "rpc_compat: forkchoice zero validator count when head state missing",
+    "rpc_compat: forkchoice hex encodes roots",
+    "rpc_compat: forkchoice includes expected node fields",
+    "rpc_compat: forkchoice",
+    "rpc_compat: forkchoice filters nodes before finalized slot",
+    "rpc_compat: forkchoice keeps nodes at or beyond finalized slot",
+    "rpc_compat: forkchoice returns empty nodes when all blocks are pre-finalized",
+    "rpc_compat: state returns ssz encoded finalized state",
+    "rpc_compat: state returns octet-stream content type",
+    "rpc_compat: state ssz decodes config",
+    "rpc_compat: state ssz decodes slot",
+    "rpc_compat: state ssz decodes latest block header",
+    "rpc_compat: state ssz decodes latest justified",
+    "rpc_compat: state ssz decodes latest finalized",
+    "rpc_compat: state ssz decodes historical block hashes",
+    "rpc_compat: state ssz decodes justified slots",
+    "rpc_compat: state ssz decodes validators",
+    "rpc_compat: state ssz decodes justifications roots",
+    "rpc_compat: state ssz decodes justifications validators",
+    "rpc_compat: state decodes",
+    "rpc_compat: state finalized endpoint tracks latest finalized slot",
+    "rpc_compat: finalized block pairs with finalized state",
+];
+
+pub(crate) fn rpc_compat_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    planned_tests_for_clients(clients, RPC_COMPAT_TEST_NAMES)
 }

@@ -6,6 +6,7 @@ use core::fmt::Debug;
 use dyn_clone::DynClone;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use std::collections::HashMap;
+use std::io::Write;
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -233,13 +234,39 @@ impl Testable for TestSpec {
 }
 
 #[derive(Clone)]
+pub enum PlannedTestCount {
+    Fixed(usize),
+    TestNames(Vec<String>),
+}
+
+impl PlannedTestCount {
+    pub fn fixed(count: usize) -> Self {
+        Self::Fixed(count)
+    }
+
+    pub fn test_names(names: Vec<String>) -> Self {
+        Self::TestNames(names)
+    }
+
+    fn count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
+        match self {
+            Self::Fixed(count) => *count,
+            Self::TestNames(names) => names
+                .iter()
+                .map(|name| planned_test_count_for_name(suite, name, false, test_matcher))
+                .sum(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct PlannedTestSpec {
     pub name: String,
     pub description: String,
     pub always_run: bool,
     pub run: AsyncTestFunc,
     pub client: Option<Client>,
-    pub planned_test_count: usize,
+    pub planned_test_count: PlannedTestCount,
 }
 
 #[async_trait]
@@ -264,10 +291,17 @@ impl Testable for PlannedTestSpec {
     }
 
     fn planned_test_count(&self, suite: &str, test_matcher: Option<&TestMatcher>) -> usize {
-        if planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher) == 0 {
-            return 0;
+        match &self.planned_test_count {
+            PlannedTestCount::Fixed(_) => {
+                if planned_test_count_for_name(suite, &self.name, self.always_run, test_matcher)
+                    == 0
+                {
+                    return 0;
+                }
+            }
+            PlannedTestCount::TestNames(_) => {}
         }
-        self.planned_test_count
+        self.planned_test_count.count(suite, test_matcher)
     }
 }
 
@@ -693,20 +727,64 @@ pub async fn run_suite(host: Simulation, suites: Vec<Suite>) {
         }
     });
 
-    for suite in suites {
-        let name = suite.clone().name;
-        let description = suite.clone().description;
+    let run = async move {
+        for suite in suites {
+            let name = suite.clone().name;
+            let description = suite.clone().description;
 
-        let suite_id = host.start_suite(name, description, "".to_string()).await;
+            let suite_id = host.start_suite(name, description, "".to_string()).await;
 
-        for test in &suite.tests {
-            test.run_test(host.clone(), suite_id, suite.clone()).await;
+            for test in &suite.tests {
+                test.run_test(host.clone(), suite_id, suite.clone()).await;
+            }
+
+            host.end_suite(suite_id).await;
         }
+    };
 
-        host.end_suite(suite_id).await;
+    tokio::select! {
+        _ = run => {
+            heartbeat.abort();
+            println!("HIVE_RUN_COMPLETE {}", serde_json::json!({}));
+        }
+        interrupt = run_interrupt_signal() => {
+            heartbeat.abort();
+            println!(
+                "HIVE_RUN_INTERRUPTED {}",
+                serde_json::json!({ "signal": interrupt.signal })
+            );
+            let _ = std::io::stdout().flush();
+            std::process::exit(interrupt.exit_code);
+        }
+    };
+}
+
+struct RunInterrupt {
+    signal: &'static str,
+    exit_code: i32,
+}
+
+#[cfg(unix)]
+async fn run_interrupt_signal() -> RunInterrupt {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut interrupt = signal(SignalKind::interrupt()).expect("failed to register SIGINT handler");
+    let mut terminate =
+        signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
+
+    tokio::select! {
+        _ = interrupt.recv() => RunInterrupt { signal: "SIGINT", exit_code: 130 },
+        _ = terminate.recv() => RunInterrupt { signal: "SIGTERM", exit_code: 143 },
     }
-    heartbeat.abort();
-    println!("HIVE_RUN_COMPLETE {}", serde_json::json!({}));
+}
+
+#[cfg(not(unix))]
+async fn run_interrupt_signal() -> RunInterrupt {
+    let _ = tokio::signal::ctrl_c().await;
+    RunInterrupt {
+        signal: "interrupt",
+        exit_code: 130,
+    }
 }
 
 fn planned_test_count_for_name(
@@ -721,4 +799,57 @@ fn planned_test_count_for_name(
         }
     }
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn noop(_: &mut Test, _: Option<Client>) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
+
+    #[test]
+    fn planned_count_from_test_names_respects_test_matcher() {
+        let spec = PlannedTestSpec {
+            name: "wrapper".to_string(),
+            description: "wrapper".to_string(),
+            always_run: true,
+            run: noop,
+            client: None,
+            planned_test_count: PlannedTestCount::test_names(vec![
+                "case one".to_string(),
+                "case two".to_string(),
+                "other".to_string(),
+            ]),
+        };
+
+        assert_eq!(spec.planned_test_count("sync", None), 3);
+
+        let matcher = TestMatcher::new("sync/case");
+        assert_eq!(spec.planned_test_count("sync", Some(&matcher)), 2);
+
+        let matcher = TestMatcher::new("rpc-compat/case");
+        assert_eq!(spec.planned_test_count("sync", Some(&matcher)), 0);
+    }
+
+    #[test]
+    fn fixed_planned_count_still_respects_wrapper_matcher() {
+        let spec = PlannedTestSpec {
+            name: "wrapper".to_string(),
+            description: "wrapper".to_string(),
+            always_run: false,
+            run: noop,
+            client: None,
+            planned_test_count: PlannedTestCount::fixed(31),
+        };
+
+        assert_eq!(spec.planned_test_count("rpc-compat", None), 31);
+
+        let matcher = TestMatcher::new("rpc-compat/wrapper");
+        assert_eq!(spec.planned_test_count("rpc-compat", Some(&matcher)), 31);
+
+        let matcher = TestMatcher::new("rpc-compat/other");
+        assert_eq!(spec.planned_test_count("rpc-compat", Some(&matcher)), 0);
+    }
 }

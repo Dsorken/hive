@@ -3,25 +3,21 @@
 mod scenarios;
 mod utils;
 
-use crate::scenarios::client_interop::run_client_interop_lean_test_suite;
-use crate::scenarios::gossip::run_gossip_lean_test_suite;
-use crate::scenarios::reqresp::run_reqresp_lean_test_suite;
-use crate::scenarios::rpc_compat::run_rpc_compat_lean_test_suite;
+use crate::scenarios::client_interop::{
+    client_interop_planned_tests, run_client_interop_lean_test_suite,
+};
+use crate::scenarios::gossip::{gossip_planned_tests, run_gossip_lean_test_suite};
+use crate::scenarios::reqresp::{reqresp_planned_tests, run_reqresp_lean_test_suite};
+use crate::scenarios::rpc_compat::{rpc_compat_planned_tests, run_rpc_compat_lean_test_suite};
 use crate::scenarios::spec_assets::{
     run_spec_assets_fork_choice_lean_test_suite, run_spec_assets_state_transition_lean_test_suite,
-    run_spec_assets_verify_signatures_lean_test_suite, spec_assets_fork_choice_test_count,
-    spec_assets_state_transition_test_count, spec_assets_verify_signatures_test_count,
+    run_spec_assets_verify_signatures_lean_test_suite, spec_assets_fork_choice_planned_tests,
+    spec_assets_state_transition_planned_tests, spec_assets_verify_signatures_planned_tests,
 };
-use crate::scenarios::sync::run_sync_lean_test_suite;
-use crate::scenarios::validation::run_validation_lean_test_suite;
+use crate::scenarios::sync::{run_sync_lean_test_suite, sync_planned_tests};
+use crate::scenarios::validation::{run_validation_lean_test_suite, validation_planned_tests};
 use crate::utils::util::{lean_clients, resolve_selected_lean_devnet, set_selected_lean_devnet};
-use hivesim::{run_suite, PlannedTestSpec, Simulation, Suite};
-
-const RPC_COMPAT_TESTS_PER_CLIENT: usize = 31;
-const SYNC_TESTS_PER_CLIENT: usize = 1;
-const VALIDATION_TESTS_PER_CLIENT: usize = 3;
-const GOSSIP_TESTS_PER_CLIENT: usize = 5;
-const REQRESP_TESTS_PER_CLIENT: usize = 17;
+use hivesim::{run_suite, PlannedTestCount, PlannedTestSpec, Simulation, Suite};
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +25,7 @@ async fn main() {
     let simulation = Simulation::new();
     let devnet = resolve_selected_lean_devnet(&simulation).await;
     set_selected_lean_devnet(devnet);
-    let lean_client_count = lean_clients(simulation.client_types().await).len();
+    let lean_client_definitions = lean_clients(simulation.client_types().await);
 
     let mut rpc_compat = Suite {
         name: "rpc-compat".to_string(),
@@ -45,7 +41,9 @@ async fn main() {
         always_run: true,
         run: run_rpc_compat_lean_test_suite,
         client: None,
-        planned_test_count: lean_client_count * RPC_COMPAT_TESTS_PER_CLIENT,
+        planned_test_count: PlannedTestCount::test_names(rpc_compat_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut sync = Suite {
@@ -62,7 +60,9 @@ async fn main() {
         always_run: true,
         run: run_sync_lean_test_suite,
         client: None,
-        planned_test_count: lean_client_count * SYNC_TESTS_PER_CLIENT,
+        planned_test_count: PlannedTestCount::test_names(sync_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut client_interop = Suite {
@@ -81,7 +81,9 @@ async fn main() {
         always_run: true,
         run: run_client_interop_lean_test_suite,
         client: None,
-        planned_test_count: client_interop_test_count(lean_client_count),
+        planned_test_count: PlannedTestCount::test_names(client_interop_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut validation = Suite {
@@ -98,7 +100,9 @@ async fn main() {
         always_run: true,
         run: run_validation_lean_test_suite,
         client: None,
-        planned_test_count: lean_client_count * VALIDATION_TESTS_PER_CLIENT,
+        planned_test_count: PlannedTestCount::test_names(validation_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut gossip = Suite {
@@ -115,7 +119,9 @@ async fn main() {
         always_run: true,
         run: run_gossip_lean_test_suite,
         client: None,
-        planned_test_count: lean_client_count * GOSSIP_TESTS_PER_CLIENT,
+        planned_test_count: PlannedTestCount::test_names(gossip_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut reqresp = Suite {
@@ -132,7 +138,9 @@ async fn main() {
         always_run: true,
         run: run_reqresp_lean_test_suite,
         client: None,
-        planned_test_count: lean_client_count * REQRESP_TESTS_PER_CLIENT,
+        planned_test_count: PlannedTestCount::test_names(reqresp_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut spec_assets_fork_choice = Suite {
@@ -151,7 +159,9 @@ async fn main() {
         always_run: true,
         run: run_spec_assets_fork_choice_lean_test_suite,
         client: None,
-        planned_test_count: spec_assets_fork_choice_test_count(lean_client_count),
+        planned_test_count: PlannedTestCount::test_names(spec_assets_fork_choice_planned_tests(
+            &lean_client_definitions,
+        )),
     });
 
     let mut spec_assets_state_transition = Suite {
@@ -170,7 +180,9 @@ async fn main() {
         always_run: true,
         run: run_spec_assets_state_transition_lean_test_suite,
         client: None,
-        planned_test_count: spec_assets_state_transition_test_count(lean_client_count),
+        planned_test_count: PlannedTestCount::test_names(
+            spec_assets_state_transition_planned_tests(&lean_client_definitions),
+        ),
     });
 
     let mut spec_assets_verify_signatures = Suite {
@@ -189,7 +201,9 @@ async fn main() {
         always_run: true,
         run: run_spec_assets_verify_signatures_lean_test_suite,
         client: None,
-        planned_test_count: spec_assets_verify_signatures_test_count(lean_client_count),
+        planned_test_count: PlannedTestCount::test_names(
+            spec_assets_verify_signatures_planned_tests(&lean_client_definitions),
+        ),
     });
 
     run_suite(
@@ -207,8 +221,4 @@ async fn main() {
         ],
     )
     .await;
-}
-
-fn client_interop_test_count(client_count: usize) -> usize {
-    client_count.saturating_mul(client_count).saturating_mul(3)
 }

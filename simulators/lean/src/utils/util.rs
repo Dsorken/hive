@@ -169,6 +169,16 @@ pub(crate) fn lean_clients(clients: Vec<ClientDefinition>) -> Vec<ClientDefiniti
         .collect()
 }
 
+pub(crate) fn planned_tests_for_clients(
+    clients: &[ClientDefinition],
+    test_names: &[&str],
+) -> Vec<String> {
+    clients
+        .iter()
+        .flat_map(|_| test_names.iter().map(|name| (*name).to_string()))
+        .collect()
+}
+
 pub(crate) fn selected_lean_devnet() -> LeanDevnet {
     let label =
         env::var(HIVE_LEAN_DEVNET_LABEL).unwrap_or_else(|_| LeanDevnet::DEFAULT.to_string());

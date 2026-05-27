@@ -8,6 +8,7 @@ use crate::utils::util::{
     http_client, lean_api_url, lean_clients, lean_environment, prepare_client_runtime_files,
     run_data_test_with_timeout, TimedDataTestSpec,
 };
+use hivesim::types::ClientDefinition;
 use hivesim::{dyn_async, Client, Test};
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -123,21 +124,34 @@ dyn_async! {
     }
 }
 
-pub fn spec_assets_fork_choice_test_count(client_count: usize) -> usize {
-    spec_assets_test_count(SpecFixtureKind::ForkChoice, client_count)
+pub(crate) fn spec_assets_fork_choice_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    spec_assets_planned_tests(SpecFixtureKind::ForkChoice, clients)
 }
 
-pub fn spec_assets_state_transition_test_count(client_count: usize) -> usize {
-    spec_assets_test_count(SpecFixtureKind::StateTransition, client_count)
+pub(crate) fn spec_assets_state_transition_planned_tests(
+    clients: &[ClientDefinition],
+) -> Vec<String> {
+    spec_assets_planned_tests(SpecFixtureKind::StateTransition, clients)
 }
 
-pub fn spec_assets_verify_signatures_test_count(client_count: usize) -> usize {
-    spec_assets_test_count(SpecFixtureKind::VerifySignatures, client_count)
+pub(crate) fn spec_assets_verify_signatures_planned_tests(
+    clients: &[ClientDefinition],
+) -> Vec<String> {
+    spec_assets_planned_tests(SpecFixtureKind::VerifySignatures, clients)
 }
 
-fn spec_assets_test_count(kind: SpecFixtureKind, client_count: usize) -> usize {
-    client_count
-        * filter_fixture_cases(discover_fixture_cases(Path::new(SPEC_TEST_ROOT), kind)).len()
+fn spec_assets_planned_tests(kind: SpecFixtureKind, clients: &[ClientDefinition]) -> Vec<String> {
+    let fixtures = filter_fixture_cases(discover_fixture_cases(Path::new(SPEC_TEST_ROOT), kind));
+    clients
+        .iter()
+        .flat_map(|client| {
+            fixtures.iter().map(|fixture| {
+                let mut fixture = fixture.clone();
+                fixture.client_name = client.name.clone();
+                hive_test_name(&fixture)
+            })
+        })
+        .collect()
 }
 
 async fn run_spec_assets_lean_test_suite_for_kind(test: &mut Test, kind: SpecFixtureKind) {

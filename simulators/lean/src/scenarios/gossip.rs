@@ -4,11 +4,12 @@ use crate::utils::libp2p_mock::{
 };
 use crate::utils::util::{
     expect_single_client, lean_clients, lean_environment, lean_single_client_runtime_setup,
-    load_fork_choice_response, prepare_client_runtime_files, selected_lean_devnet,
-    simulator_container_ip, LeanDevnet,
+    load_fork_choice_response, planned_tests_for_clients, prepare_client_runtime_files,
+    selected_lean_devnet, simulator_container_ip, LeanDevnet,
 };
 use alloy_primitives::B256;
 use futures::prelude::*;
+use hivesim::types::ClientDefinition;
 use hivesim::{dyn_async, Client, Test};
 use libp2p::swarm::SwarmEvent;
 use ssz::Encode;
@@ -18,6 +19,18 @@ use tokio::time::sleep;
 const GOSSIPSUB_TIMEOUT_SECS: u64 = 30;
 const NODE_ID_ENVIRONMENT_VARIABLE: &str = "HIVE_NODE_ID";
 const CLIENT_PRIVATE_KEY_ENVIRONMENT_VARIABLE: &str = "HIVE_CLIENT_PRIVATE_KEY";
+
+const GOSSIP_TEST_NAMES: &[&str] = &[
+    "gossip: client subscribes to block topic",
+    "gossip: ignores wrong fork digest topic",
+    "gossip: ignores malformed ssz",
+    "gossip: caches orphan block",
+    "gossip: deduplicates duplicate messages",
+];
+
+pub(crate) fn gossip_planned_tests(clients: &[ClientDefinition]) -> Vec<String> {
+    planned_tests_for_clients(clients, GOSSIP_TEST_NAMES)
+}
 
 // Suite: gossip
 // Tests gossipsub protocol behavior using a mock node.
